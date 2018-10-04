@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import javax.ws.rs.Consumes;
+import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.QueryParam;
@@ -32,11 +33,11 @@ public class HelloWorld {
 	 */
 	
 	
-	  @PUT
+	  @POST
 	  @Consumes(MediaType.APPLICATION_JSON)
 	  public Response trainStatus(@QueryParam("startTime") String startTime, @QueryParam("endTime") String endTime, TrainResponse trainResponse) throws JSONException {
  
-		System.out.println("Receiving request " + JsonMapper.mapObjectToJson(trainResponse));
+		//System.out.println("Receiving request " + JsonMapper.mapObjectToJson(trainResponse));
 		  
 		//Start new trains
 		startTrains(startTime, endTime, trainResponse);
@@ -47,13 +48,19 @@ public class HelloWorld {
 		//move all trains
 		moveAll(startTime, endTime, trainResponse);
 		
+		//System.out.println("Sending response " + JsonMapper.mapObjectToJson(trainResponse));
+		
 		return Response.status(200).entity(JsonMapper.mapObjectToJson(trainResponse)).build();
 	  }
 
 	private void moveAll(String startTime, String endTime, TrainResponse trainResponse) {
 		
-		double range = Double.valueOf(endTime) - Double.valueOf(startTime);
 		for(TrainDetail trainDetail: trainResponse.getTrainDetail()) {
+			if(trainDetail.getCurrentLocation().equals("Reached destination")) {
+				continue; // Must remove these from the list to remove duplicate runs
+			}
+			double range = Double.valueOf(endTime) - Double.valueOf(startTime);
+			
 			if(trainDetail.isJustStarted()) {
 				range = trainDetail.getTimeStarted();
 				trainDetail.setJustStarted(false);
@@ -64,6 +71,9 @@ public class HelloWorld {
 				if(trainDetail.getCurrentLocation().equals("Moving")) {
 				StationDetail station = getNextStation(trainDetail.getStationsPending(), trainDetail.getDistanceCovered());
 				double maxDistance = getMaxDistance(trainDetail.getStationsPending());
+				if(station == null) {
+					System.out.println("Empty station for " + JsonMapper.mapObjectToJson(trainDetail));
+				}
 				double distancePending = station.getDistance() - Double.valueOf(trainDetail.getDistanceCovered());
 				double tempDistance = (Double.valueOf(station.getSpeed())*range)/1000.0;
 				
@@ -83,16 +93,25 @@ public class HelloWorld {
 	
 			} else {//Train is at a station
 				StationDetail stationDetail = getStationByCode(trainDetail.getCurrentLocation(), trainDetail);
-				if(stationDetail.getStopTime()==0) {
+				if(trainDetail.getFinalDestination().equals(stationDetail.getCode())) { //Train has reached destination
+					//move this to done
+					moveToVisited(trainDetail, stationDetail.getCode());
+					range = 0;
+					trainDetail.setCurrentLocation("Reached destination");
+					trainDetail.getStationsCovered().clear();
+					break;
+				}
+				
+				else if(stationDetail.getStopTime()==0) { //Train is passing through a station
 					
 					//move this to done
 					moveToVisited(trainDetail, stationDetail.getCode());
 					//carry on moving
 					trainDetail.setCurrentLocation("Moving");
 				}
-				else {
+				else {//Train has stopped at a station
 					
-					if(stationDetail.getraminingStopTime() > 0) {
+					if(stationDetail.getraminingStopTime() > 0) {//Stopped in a previous cycle
 						if(range < stationDetail.getraminingStopTime()) {
 							stationDetail.setraminingStopTime(stationDetail.getraminingStopTime()-range);
 							range=0;
@@ -107,8 +126,9 @@ public class HelloWorld {
 						}
 					}
 					else {
+						
 						if(range < stationDetail.getStopTime()) {
-							stationDetail.setraminingStopTime(stationDetail.getraminingStopTime()-range);
+							stationDetail.setraminingStopTime(stationDetail.getStopTime()-range);
 							range=0;
 						} else {
 							range = range - stationDetail.getStopTime();
@@ -146,6 +166,8 @@ public class HelloWorld {
 				return station;
 			}
 		}
+		
+		System.out.println("Returning null for "+ currentLocation + " and "+JsonMapper.mapObjectToJson(trainDetail));
 		return null;
 	}
 
@@ -217,7 +239,6 @@ public class HelloWorld {
 				        	tempTravelTime = tempTravelTime + 86400000;
 				        }
 				        double speed = (Double.valueOf(distance)*1000000.0/tempTravelTime);
-				        System.out.println("Speed is "+speed);
 				        StationDetail station = new StationDetail(rs.getString("Station"),Double.valueOf(distance)+Double.valueOf(prevDistance) , String.valueOf(speed), waitingTime );
 			        	
 				
@@ -389,7 +410,11 @@ public class HelloWorld {
 			trainDetail.setStationsPending(new ArrayList<StationDetail>()); //To be done
 			trainDetailList.add(trainDetail);
 		}
-		trainResponse.setTrainDetail(trainDetailList);
+		
+		if(trainResponse.getTrainDetail()==null) {
+			trainResponse.setTrainDetail(new ArrayList<TrainDetail>());
+		}
+		trainResponse.getTrainDetail().addAll(trainDetailList);
 	}
 
 	private List<Train> fetchTrains(String startTime, String endTime) {
