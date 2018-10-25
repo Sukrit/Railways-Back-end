@@ -7,6 +7,8 @@ public class TrainDetail {
 	private String Number;
 	private String Name;
 	private String CurrentLocation;
+	private double currentLat;
+	private double currentLong;
 	private String departureTime;
 	private String finalDestination;
 	private String Delayed;
@@ -96,6 +98,18 @@ public class TrainDetail {
 	}
 	public void setStartLocation(String startLocation) {
 		this.startLocation = startLocation;
+	}
+	public double getCurrentLong() {
+		return currentLong;
+	}
+	public void setCurrentLong(double currentLong) {
+		this.currentLong = currentLong;
+	}
+	public double getCurrentLat() {
+		return currentLat;
+	}
+	public void setCurrentLat(double currentLat) {
+		this.currentLat = currentLat;
 	}
 
 }
