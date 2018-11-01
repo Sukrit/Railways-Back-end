@@ -3,8 +3,6 @@ package Railways.Railways;
 import org.o7planning.generateentities.Station;
 import org.o7planning.generateentities.Train;
 
-import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonArrayFormatVisitor;
-
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -14,12 +12,9 @@ import java.sql.Time;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -27,11 +22,10 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
-import org.json.JSONArray;
 import org.json.JSONException;
 
 @Path("/trainStatus")
-public class HelloWorld {
+public class RailwayHandler {
 
 	/*
 	 * This function should perform the following tasks 1) Fetch new trains from the
@@ -39,13 +33,17 @@ public class HelloWorld {
 	 * their status
 	 */
 	private static boolean STATION_CHECK = false;
+	private static boolean TRACK_CHECK = false;
+
+	private static QueryBuilder queryBuilder = new QueryBuilder();
 
 	@POST
 	@Consumes(MediaType.APPLICATION_JSON)
 	public Response trainStatus(@QueryParam("startTime") String startTime, @QueryParam("endTime") String endTime,
 			@QueryParam("startDay") String startDay, @QueryParam("stationCheck") String stationCheck,
-			TrainResponse trainResponse) throws JSONException {
+			@QueryParam("trackCheck") String trackCheck, TrainResponse trainResponse) throws JSONException {
 
+		TRACK_CHECK = Boolean.valueOf(trackCheck);
 		STATION_CHECK = Boolean.valueOf(stationCheck);
 		// System.out.println("Receiving request " +
 		// JsonMapper.mapObjectToJson(trainResponse));
@@ -66,6 +64,7 @@ public class HelloWorld {
 
 		// System.out.println("Sending response " +
 		// JsonMapper.mapObjectToJson(trainResponse));
+		// queryBuilder.close();
 
 		return Response.status(200).entity(JsonMapper.mapObjectToJson(trainResponse)).build();
 	}
@@ -80,13 +79,10 @@ public class HelloWorld {
 				for (StationDetail station : trainDetail.getStationsPending()) {
 					if (station.getLat() != 0 && station.getLongitude() != 0 && last.getLat() != 0
 							&& last.getLongitude() != 0) {
-						
-						
+
 						deltaLat = station.getLat() - last.getLat();
 						deltaLong = station.getLongitude() - last.getLongitude();
-						if(trainDetail.getNumber().equals("58001")) {
-							System.out.println("last code:"+last.getCode()+" Last lat:"+last.getLat()+" Last long:"+last.getLongitude());
-						}
+
 					} else {
 						deltaLat = 0;
 						deltaLong = 0;
@@ -145,6 +141,8 @@ public class HelloWorld {
 
 			while (range > 0) {
 
+				StationDetail prevStation = getPrevStation(trainDetail.getStationsCovered());
+
 				if (trainDetail.getCurrentLocation().equals("Moving")) {
 
 					if (trainDetail.getStationsPending().isEmpty()) {
@@ -167,16 +165,12 @@ public class HelloWorld {
 								String.valueOf(Double.valueOf(trainDetail.getDistanceCovered()) + tempDistance));
 						trainDetail.setPercentCompleted(
 								String.valueOf(Double.valueOf(trainDetail.getDistanceCovered()) * 100.0 / maxDistance));
-						if (station.getDeltaLat() != 0 || station.getDeltaLong()!=0) { //Train can move horizontally or vertically
-							trainDetail.setCurrentLat(trainDetail.getCurrentLat()
-									+ (tempDistance * station.getDeltaLat()) / 111.0);
-							trainDetail.setCurrentLong(
-									trainDetail.getCurrentLong() + (tempDistance * station.getDeltaLong())
-											/ getLongDifference(station.getLat()));
-							if (trainDetail.getNumber().equals("54377")) {
-								System.out.println("Lat:" + trainDetail.getCurrentLat() + " Long:"
-										+ trainDetail.getCurrentLong());
-							}
+						if (station.getDeltaLat() != 0 || station.getDeltaLong() != 0) { // Train can move horizontally
+																							// or vertically
+							trainDetail.setCurrentLat(
+									trainDetail.getCurrentLat() + (tempDistance * station.getDeltaLat()) / 111.0);
+							trainDetail.setCurrentLong(trainDetail.getCurrentLong()
+									+ (tempDistance * station.getDeltaLong()) / getLongDifference(station.getLat()));
 
 						}
 						range = 0;
@@ -190,80 +184,283 @@ public class HelloWorld {
 
 						range = range - time;
 						trainDetail.setCurrentLocation(station.getCode());
-						if (station.getLat()!=0 && station.getLongitude()!=0) {
+						if (station.getLat() != 0 && station.getLongitude() != 0) {
 							trainDetail.setCurrentLat(station.getLat());
 							trainDetail.setCurrentLong(station.getLongitude());
-							if (trainDetail.getNumber().equals("58001")) {
-								System.out.println("Lat:" + trainDetail.getCurrentLat() + " Long:"
-										+ trainDetail.getCurrentLong());
-							}
 						}
+
 					}
 
 				} else {// Train is at a station
 					StationDetail stationDetail = getStationByCode(trainDetail.getCurrentLocation(), trainDetail);
 					if (stationDetail.getStopTime() == 0) { // Train is passing through a station
 
-						// move this to done
-						moveToVisited(trainDetail, stationDetail.getCode());
-						// carry on moving
-						trainDetail.setCurrentLocation("Moving");
+						if (isTrackAvailable(stationDetail,
+								getNextStation(trainDetail.getStationsPending(), trainDetail.getDistanceCovered()))) {
+							// move this to done
+							moveToVisited(trainDetail, stationDetail.getCode());
+							// carry on moving
+							trainDetail.setCurrentLocation("Moving");
+
+							updateTrackStatus(stationDetail,
+									getNextStation(trainDetail.getStationsPending(), trainDetail.getDistanceCovered()),
+									"Occupied");
+						} else {
+							trainDetail.setDelayed("true");
+							range = 0;
+							trainDetail.setLateBy(trainDetail.getLateBy() + range);
+							if (isPlatformAvailable(trainResponse, stationDetail)) {
+								updateStationStatus(trainResponse, stationDetail, "Occupy");
+							}
+						}
 					} else {// Train has stopped at a station
 
 						if (stationDetail.getraminingStopTime() > 0) {// Stopped in a previous cycle
-							if (range < stationDetail.getraminingStopTime()) {
+							if (range < stationDetail.getraminingStopTime()) { // Continue to wait at the station
 								stationDetail.setraminingStopTime(stationDetail.getraminingStopTime() - range);
 								range = 0;
 							} else {
+
 								range = range - stationDetail.getraminingStopTime();
 								stationDetail.setraminingStopTime(0.0);
-								// move this to done
-								moveToVisited(trainDetail, stationDetail.getCode());
-								if (STATION_CHECK) {
-									trainResponse.getStationMap().put(stationDetail.getCode(),
-											trainResponse.getStationMap().get(stationDetail.getCode()) + 1);
-								}
-								// carry on moving
-								trainDetail.setCurrentLocation("Moving");
-							}
-						} else {
-							if (STATION_CHECK) {
-								if (trainResponse.getStationMap().get(stationDetail.getCode()) > 0) {
-									trainResponse.getStationMap().put(stationDetail.getCode(),
-											trainResponse.getStationMap().get(stationDetail.getCode()) - 1);
-								} else { // can't find a platform
-									trainDetail.setDelayed("true");
+
+								if (isTrackAvailable(stationDetail, getNextStation(trainDetail.getStationsPending(),
+										trainDetail.getDistanceCovered()))) {
+									// move this to done
+									moveToVisited(trainDetail, stationDetail.getCode());
+									// carry on moving
 									trainDetail.setCurrentLocation("Moving");
-									System.out.println(
-											"Train delayed at station : " + JsonMapper.mapObjectToJson(stationDetail));
+
+									updateTrackStatus(stationDetail, getNextStation(trainDetail.getStationsPending(),
+											trainDetail.getDistanceCovered()), "Occupied");
+
+									updateStationStatus(trainResponse, stationDetail, "Release");
+
+								} else {
+									setTrainAsLate(trainDetail, range, stationDetail);
 									range = 0;
-									break;
 								}
+
+							}
+						} else {// New scheduled stoppage
+
+							if (isPlatformAvailable(trainResponse, stationDetail)) {
+								updateStationStatus(trainResponse, stationDetail, "Occupy");
+								updateTrackStatus(prevStation, stationDetail, "Available");
 							}
 
-							if (range < stationDetail.getStopTime()) {
-								stationDetail.setraminingStopTime(stationDetail.getStopTime() - range);
-								range = 0;
-							} else {
-								range = range - stationDetail.getStopTime();
-								// move this to done
-								moveToVisited(trainDetail, stationDetail.getCode());
-								if (STATION_CHECK) {
-									trainResponse.getStationMap().put(stationDetail.getCode(),
-											trainResponse.getStationMap().get(stationDetail.getCode()) + 1);
-								}
-
-								// carry on moving
+							else { // can't find a platform
 								trainDetail.setCurrentLocation("Moving");
+
+								updateTrackStatus(prevStation, stationDetail, "Occupied");
+								setTrainAsLate(trainDetail, range, stationDetail);
+								range = 0;
 
 							}
 						}
 
-					}
-				}
+						if (range < stationDetail.getStopTime()) {
+							stationDetail.setraminingStopTime(stationDetail.getStopTime() - range);
+							range = 0;
+						} else {
 
+							range = range - stationDetail.getStopTime();
+
+							if (isTrackAvailable(stationDetail, getNextStation(trainDetail.getStationsPending(),
+									trainDetail.getDistanceCovered()))) {
+								// move this to done
+								moveToVisited(trainDetail, stationDetail.getCode());
+								// carry on moving
+								trainDetail.setCurrentLocation("Moving");
+
+								updateStationStatus(trainResponse, stationDetail, "Release");
+
+								updateTrackStatus(stationDetail, getNextStation(trainDetail.getStationsPending(),
+										trainDetail.getDistanceCovered()), "Occupied");
+							} else {
+								setTrainAsLate(trainDetail, range, stationDetail);
+								range = 0;
+
+							}
+
+						}
+					}
+
+				}
+			}
+
+		}
+	}
+
+	private void setTrainAsLate(TrainDetail trainDetail, double range, StationDetail stationDetail) {
+		trainDetail.setLateBy(trainDetail.getLateBy() + range);
+		trainDetail.setDelayed("true");
+		
+		System.out.println("Train delayed at station : " + JsonMapper.mapObjectToJson(stationDetail.getCode()));
+	}
+
+	private void updateStationStatus(TrainResponse trainResponse, StationDetail stationDetail, String string) {
+		if (!STATION_CHECK) {
+			return;
+		}
+
+		if (string.equals("Occupy")) {
+			trainResponse.getStationMap().put(stationDetail.getCode(),
+					trainResponse.getStationMap().get(stationDetail.getCode()) - 1);
+		} else {
+			trainResponse.getStationMap().put(stationDetail.getCode(),
+					trainResponse.getStationMap().get(stationDetail.getCode()) + 1);
+		}
+
+	}
+
+	private boolean isPlatformAvailable(TrainResponse trainResponse, StationDetail stationDetail) {
+		if (!STATION_CHECK) {
+			return true;
+		}
+		if (trainResponse.getStationMap().get(stationDetail.getCode()) > 0) {
+			return true;
+		}
+		return false;
+	}
+
+	private StationDetail getPrevStation(List<StationDetail> stationsCovered) {
+		double max = -50.0;
+		StationDetail stationMax = null;
+		for (StationDetail station : stationsCovered) {
+			if (station.getDistance() > max) {
+				max = station.getDistance();
+				stationMax = station;
 			}
 		}
+
+		return stationMax;
+	}
+
+	private void updateTrackStatus(StationDetail currentStation, StationDetail nextStation, String status) {
+		if (!TRACK_CHECK) {
+			return;
+		}
+
+		String sql = "SELECT TYPE FROM NODE WHERE `FROM`='" + currentStation.getCode() + "' AND `TO`='"
+				+ nextStation.getCode() + "';";
+
+		ResultSet rs = queryBuilder.selectCustomQuery(sql);
+		try {
+			if (rs == null) {
+				return;
+			}
+			while (rs.next()) {
+
+				String type = rs.getString("TYPE");
+
+				if (isDoubleLine(type)) {
+					// mark one way as occupied
+					sql = "UPDATE NODE SET STATUS ='" + status + "' WHERE `from` = '" + currentStation.getCode()
+							+ "' and `to` = '" + nextStation.getCode() + "';";
+					queryBuilder.updateCustomQuery(sql);
+
+				} else if (isSingleLine(type)) {
+					// mark both ways as occupied
+					sql = "UPDATE NODE SET STATUS ='" + status + "' WHERE `from` = '" + currentStation.getCode()
+							+ "' and `to` = '" + nextStation.getCode() + "';";
+					queryBuilder.updateCustomQuery(sql);
+
+					sql = "UPDATE NODE SET STATUS ='" + status + "' WHERE `from` = '" + nextStation.getCode()
+							+ "' and `to` = '" + currentStation.getCode() + "';";
+					queryBuilder.updateCustomQuery(sql);
+				} else {
+					return;
+				}
+			}
+
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+	private boolean isSingleLine(String trackType) {
+
+		if (trackType == null) {
+			return false;
+		}
+		TrackType type = TrackType.get(trackType.trim());
+		if (type == null) {
+			System.out.println("Returning null for "+trackType);
+			return false;
+		}
+		switch (type) {
+
+		case SINGLE_ELECTRIC:
+			return true;
+		case CONST_SINGLE_LINE:
+			return true;
+		case SINGLE_DIESEL:
+			return true;
+		case METRE_GAUGE:
+			return true;
+		case NARROW_GAUGE:
+			return true;
+		case CONST_NEW:
+			return true;
+		default:
+			return false;
+
+		}
+	}
+
+	private boolean isDoubleLine(String trackType) {
+		
+		if (trackType == null) {
+			return false;
+		}
+		TrackType type = TrackType.get(trackType.trim());
+		if (type == null) {
+			System.out.println("Returning null for "+trackType);
+			return false;
+		}
+		switch (type) {
+
+		case DOUBLE_ELECTRIC:
+			return true;
+		case DOUBLE_DIESEL:
+			return true;
+		case CONST_DOUBLE_DIESEL:
+			return true;
+		case CONST_DOUBLE_ELECTRIC:
+			return true;
+		case CONST_DOUBLING_ELECTRIC:
+			return true;
+		case CONST_ELECTRIC_DOUBLE:
+			return true;
+		default:
+			return false;
+
+		}
+	}
+
+	private boolean isTrackAvailable(StationDetail currentStation, StationDetail nextStation) {
+		if (!TRACK_CHECK) {
+			return true;
+		}
+
+		String sql = "SELECT STATUS FROM NODE WHERE `FROM`='" + currentStation.getCode() + "' AND `TO`='"
+				+ nextStation.getCode() + "';";
+		ResultSet rs = queryBuilder.selectCustomQuery(sql);
+		try {
+			while (rs.next()) {
+				if (rs.getString("STATUS").equals("Occupied")) {
+					return false;
+				}
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		return true;
 	}
 
 	private double getLongDifference(double lat) {
@@ -326,20 +523,8 @@ public class HelloWorld {
 			if (trainDetail.getDistanceCovered() == "0") {// Recently added trains
 
 				try {
-					Class.forName("com.mysql.jdbc.Driver");
 
-					Connection con = null;
-					con = DriverManager.getConnection("jdbc:mysql://localhost/railways", "root", "");
-					con.setAutoCommit(false);
-					PreparedStatement pstm = null;
-					PreparedStatement pstm2 = null;
-
-					// fetch all stops
-					String sql = "SELECT * FROM STOP WHERE `TRAIN NUMBER` =" + trainDetail.getNumber()
-							+ " ORDER BY `SERIAL NUMBER` ASC";
-					pstm = (PreparedStatement) con.prepareStatement(sql);
-					ResultSet rs = pstm.executeQuery();
-					con.commit();
+					ResultSet rs = queryBuilder.selectStopsQuery(trainDetail.getNumber());
 
 					long prevDepart = Time.valueOf(trainDetail.getDepartureTime()).getTime();
 					String prevStation = trainDetail.getStartLocation();
@@ -349,12 +534,8 @@ public class HelloWorld {
 						// fetch distance for each stop
 						if (!(rs.getString("Station")).equals(prevStation)) {
 
-							String newSql = "SELECT DISTANCE FROM ROUTE WHERE `FROM` = '" + prevStation
-									+ "' AND `TO` = '" + rs.getString("Station") + "' ORDER BY DISTANCE DESC LIMIT 1";
-							pstm2 = (PreparedStatement) con.prepareStatement(newSql);
-							ResultSet rs2 = pstm2.executeQuery();
+							ResultSet rs2 = queryBuilder.selectRouteQuery(prevStation, rs.getString("Station"));
 							rs2.next();
-							con.commit();
 							long waitingTime = ((rs.getTime("Departure Time")).getTime()
 									- (rs.getTime("Arrival Time")).getTime()) / 1000;
 							;
@@ -368,24 +549,21 @@ public class HelloWorld {
 							double speed = (Double.valueOf(distance) * 1000000.0 / tempTravelTime);
 							StationDetail station = new StationDetail(rs.getString("Station"),
 									Double.valueOf(distance) + Double.valueOf(prevDistance), String.valueOf(speed),
-									waitingTime, con);
+									waitingTime, queryBuilder);
 
 							// fetch train number/serial number of train covering max stations and almost
 							// equal to the distance
-							newSql = "select max(k.`serial number`-s.`serial number`) as boo"
+							String newSql = "select max(k.`serial number`-s.`serial number`) as boo"
 									+ " from stop s, stop k where s.station='" + prevStation + "' and k.station= '"
 									+ rs.getString("Station") + "' "
 									+ "and s.`train number`=k.`train number` order by boo desc limit 1";
-							pstm2 = (PreparedStatement) con.prepareStatement(newSql);
-							ResultSet rs3 = pstm2.executeQuery();
-							con.commit();
+							ResultSet rs3 = queryBuilder.selectCustomQuery(newSql);
 							rs3.next();
 							int maxCount = rs3.getInt("boo");
 
 							// call a method to fetch sub-stops and distance (FUCK!!)
 							List<StationDetail> stationList = fetchAllStations(prevStation, rs.getString("Station"),
-									maxCount, distance, station, speed, Integer.parseInt(prevDistance), con,
-									waitingTime);
+									maxCount, distance, station, speed, Integer.parseInt(prevDistance), waitingTime);
 
 							// populate sub-stops, distance and speed
 							trainDetail.getStationsPending().addAll(stationList);
@@ -396,10 +574,6 @@ public class HelloWorld {
 						}
 
 					}
-					con.close();
-				} catch (ClassNotFoundException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
 				} catch (SQLException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
@@ -412,26 +586,24 @@ public class HelloWorld {
 	}
 
 	private List<StationDetail> fetchAllStations(String prevStation, String toStation, int maxCount, String distance,
-			StationDetail station, double speed, int prevDistance, Connection con2, long waitingTime) {
+			StationDetail station, double speed, int prevDistance, long waitingTime) {
 
 		try {
-			PreparedStatement pstm = null;
 			int count = maxCount;
 			while (count != 1) {
 				String sql = "select s.`train number`,s.`serial number` from stop s, stop k where s.station='"
 						+ prevStation + "' and k.station='" + toStation
 						+ "' and s.`train number`= k.`train number` and (k.`serial number`- s.`serial number`) ="
 						+ count;
-				pstm = (PreparedStatement) con2.prepareStatement(sql);
-				ResultSet rs = pstm.executeQuery();
-				con2.commit();
+
+				ResultSet rs = queryBuilder.selectCustomQuery(sql);
 
 				while (rs.next()) {
-					if (getDistance(rs.getInt("Train Number"), rs.getInt("Serial Number"), count,
-							con2) < (Integer.parseInt(distance) + 5)) {
+					if (getDistance(rs.getInt("Train Number"), rs.getInt("Serial Number"),
+							count) < (Integer.parseInt(distance) + 5)) {
 
 						return populate(rs.getInt("Train Number"), rs.getInt("Serial Number"), count, speed,
-								prevDistance, con2, waitingTime);
+								prevDistance, waitingTime);
 					}
 
 				}
@@ -451,26 +623,21 @@ public class HelloWorld {
 	}
 
 	private List<StationDetail> populate(int trainNumber, int serialNumber, int count, double speed, int prevDistance,
-			Connection con2, long waitingTime) {
+			long waitingTime) {
 		try {
-			PreparedStatement pstm = null;
 			List<StationDetail> stationDetail = new ArrayList<StationDetail>();
 			int cumDistance = 0;
 			for (int i = serialNumber; i < (serialNumber + count); i++) {
 
 				String sql = "(select station from stop where `train number`= " + trainNumber
 						+ " and `serial number` = " + (i + 1) + ")";
-				pstm = (PreparedStatement) con2.prepareStatement(sql);
-				ResultSet rs = pstm.executeQuery();
-				con2.commit();
+				ResultSet rs = queryBuilder.selectCustomQuery(sql);
 				rs.next();
 				String stationCode = rs.getString("Station");
 
 				sql = "select distance from route where `from` = " + "(select station from stop where `train number`= "
 						+ trainNumber + " and `serial number` = " + i + ") and `to`= '" + stationCode + "'";
-				pstm = (PreparedStatement) con2.prepareStatement(sql);
-				rs = pstm.executeQuery();
-				con2.commit();
+				rs = queryBuilder.selectCustomQuery(sql);
 				rs.next();
 				int PartDistance = rs.getInt("Distance");
 				cumDistance = cumDistance + PartDistance;
@@ -479,7 +646,7 @@ public class HelloWorld {
 					stopTime = waitingTime;
 				}
 				StationDetail station = new StationDetail(stationCode, Double.valueOf(cumDistance + prevDistance),
-						String.valueOf(speed), stopTime, con2);
+						String.valueOf(speed), stopTime, queryBuilder);
 				stationDetail.add(station);
 
 			}
@@ -493,21 +660,18 @@ public class HelloWorld {
 
 	}
 
-	private int getDistance(int trainNumber, int serialNumber, int count, Connection con2) {
+	private int getDistance(int trainNumber, int serialNumber, int count) {
 		int distance = 0;
 
 		try {
-
-			PreparedStatement pstm = null;
 
 			for (int i = serialNumber; i <= (serialNumber + count - 1); i++) {
 				String sql = "select distance from route where `from` = "
 						+ "(select station from stop where `train number`= " + trainNumber + " and `serial number` = "
 						+ i + ") and `to`= " + "(select station from stop where `train number`= " + trainNumber
 						+ " and `serial number` = " + (i + 1) + ")";
-				pstm = (PreparedStatement) con2.prepareStatement(sql);
-				ResultSet rs = pstm.executeQuery();
-				con2.commit();
+				ResultSet rs = queryBuilder.selectCustomQuery(sql);
+
 				rs.next();
 				distance = distance + rs.getInt("Distance");
 
@@ -549,7 +713,7 @@ public class HelloWorld {
 				e.printStackTrace();
 			}
 			// add current train, stoppage time of dep time - start time
-			StationDetail station = new StationDetail(trainDetail.getStartLocation(), 0.0, "0.0", 0);
+			StationDetail station = new StationDetail(trainDetail.getStartLocation(), 0.0, "0.0", 0, queryBuilder);
 			trainDetail.setCurrentLat(station.getLat());
 			trainDetail.setCurrentLong(station.getLongitude());
 			List<StationDetail> stationList = new ArrayList<StationDetail>();
@@ -662,4 +826,5 @@ public class HelloWorld {
 			return "SUN";
 		}
 	}
+
 }

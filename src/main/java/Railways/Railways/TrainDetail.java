@@ -19,7 +19,14 @@ public class TrainDetail {
 	private boolean justStarted;
 	private String startLocation;
 	private double timeStarted;
+	private double lateBy = 0;
 	
+	public double getLateBy() {
+		return lateBy;
+	}
+	public void setLateBy(double lateBy) {
+		this.lateBy = lateBy;
+	}
 	double getTimeStarted() {
 		return timeStarted;
 	}

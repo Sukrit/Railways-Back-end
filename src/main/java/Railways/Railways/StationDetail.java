@@ -8,6 +8,7 @@ import java.sql.SQLException;
 
 public class StationDetail {
 
+	private QueryBuilder queryBuilder;
 	private String code;
 	private Double Distance;
 	private String speed; // represented in m/sec
@@ -54,69 +55,31 @@ public class StationDetail {
 		this.raminingStopTime = d;
 	}
 
-	public StationDetail(String code, Double distance, String speed2, long stopTime, Connection con) {
+	public StationDetail(String code, Double distance, String speed2, long stopTime, QueryBuilder queryBuilder) {
 		super();
 		this.code = code;
 		Distance = distance;
 		this.speed = speed2;
 		this.stopTime = stopTime;
+		this.queryBuilder = queryBuilder;
 
-		try {
-			Class forName = Class.forName("com.mysql.jdbc.Driver");
-			PreparedStatement pstm = null;
 			String sql = "SELECT LAT, `LONG` from STATION WHERE CODE='" + code + "';";
-			//System.out.println(sql);
-			pstm = (PreparedStatement) con.prepareStatement(sql);
-			ResultSet rs = pstm.executeQuery();
-			rs.next();
-			if (rs!=null) {
-				this.lat = rs.getDouble("lat");
-				this.longitude = rs.getDouble("long");
-			}
-
-		} catch (SQLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (ClassNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-
-	}
-
-	public StationDetail(String code, Double distance, String speed2, long stopTime) {
-		super();
-		this.code = code;
-		Distance = distance;
-		this.speed = speed2;
-		this.stopTime = stopTime;
-
-		try {
-			Class forName = Class.forName("com.mysql.jdbc.Driver");
-			Connection con = null;
-			con = DriverManager.getConnection("jdbc:mysql://localhost/railways", "root", "");
-			con.setAutoCommit(false);
-			PreparedStatement pstm = null;
-			String sql = "SELECT LAT, `LONG` from STATION WHERE CODE='" + code + "';";
-			//System.out.println(sql);
+			ResultSet rs = this.queryBuilder.selectCustomQuery(sql);
+			try {
+				rs.next();
 			
-			pstm = (PreparedStatement) con.prepareStatement(sql);
-			ResultSet rs = pstm.executeQuery();
-			rs.next();
 			if (rs!=null) {
 				this.lat = rs.getDouble("lat");
 				this.longitude = rs.getDouble("long");
 			}
-
-		} catch (SQLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (ClassNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		
 
 	}
+
 
 	public String getCode() {
 		return code;
