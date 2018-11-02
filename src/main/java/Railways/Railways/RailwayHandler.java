@@ -247,6 +247,34 @@ public class RailwayHandler {
 							if (isPlatformAvailable(trainResponse, stationDetail)) {
 								updateStationStatus(trainResponse, stationDetail, "Occupy");
 								updateTrackStatus(prevStation, stationDetail, "Available");
+
+								if (range < stationDetail.getStopTime()) {
+									stationDetail.setraminingStopTime(stationDetail.getStopTime() - range);
+									range = 0;
+								} else {
+
+									range = range - stationDetail.getStopTime();
+
+									if (isTrackAvailable(stationDetail, getNextStation(trainDetail.getStationsPending(),
+											trainDetail.getDistanceCovered()))) {
+										// move this to done
+										moveToVisited(trainDetail, stationDetail.getCode());
+										// carry on moving
+										trainDetail.setCurrentLocation("Moving");
+
+										updateStationStatus(trainResponse, stationDetail, "Release");
+
+										updateTrackStatus(stationDetail,
+												getNextStation(trainDetail.getStationsPending(),
+														trainDetail.getDistanceCovered()),
+												"Occupied");
+									} else {
+										setTrainAsLate(trainDetail, range, stationDetail);
+										range = 0;
+
+									}
+
+								}
 							}
 
 							else { // can't find a platform
@@ -259,31 +287,6 @@ public class RailwayHandler {
 							}
 						}
 
-						if (range < stationDetail.getStopTime()) {
-							stationDetail.setraminingStopTime(stationDetail.getStopTime() - range);
-							range = 0;
-						} else {
-
-							range = range - stationDetail.getStopTime();
-
-							if (isTrackAvailable(stationDetail, getNextStation(trainDetail.getStationsPending(),
-									trainDetail.getDistanceCovered()))) {
-								// move this to done
-								moveToVisited(trainDetail, stationDetail.getCode());
-								// carry on moving
-								trainDetail.setCurrentLocation("Moving");
-
-								updateStationStatus(trainResponse, stationDetail, "Release");
-
-								updateTrackStatus(stationDetail, getNextStation(trainDetail.getStationsPending(),
-										trainDetail.getDistanceCovered()), "Occupied");
-							} else {
-								setTrainAsLate(trainDetail, range, stationDetail);
-								range = 0;
-
-							}
-
-						}
 					}
 
 				}
@@ -295,7 +298,7 @@ public class RailwayHandler {
 	private void setTrainAsLate(TrainDetail trainDetail, double range, StationDetail stationDetail) {
 		trainDetail.setLateBy(trainDetail.getLateBy() + range);
 		trainDetail.setDelayed("true");
-		
+
 		System.out.println("Train delayed at station : " + JsonMapper.mapObjectToJson(stationDetail.getCode()));
 	}
 
@@ -339,6 +342,10 @@ public class RailwayHandler {
 
 	private void updateTrackStatus(StationDetail currentStation, StationDetail nextStation, String status) {
 		if (!TRACK_CHECK) {
+			return;
+		}
+		
+		if(nextStation==null) {
 			return;
 		}
 
@@ -388,7 +395,7 @@ public class RailwayHandler {
 		}
 		TrackType type = TrackType.get(trackType.trim());
 		if (type == null) {
-			System.out.println("Returning null for "+trackType);
+			System.out.println("Returning null for " + trackType);
 			return false;
 		}
 		switch (type) {
@@ -412,13 +419,13 @@ public class RailwayHandler {
 	}
 
 	private boolean isDoubleLine(String trackType) {
-		
+
 		if (trackType == null) {
 			return false;
 		}
 		TrackType type = TrackType.get(trackType.trim());
 		if (type == null) {
-			System.out.println("Returning null for "+trackType);
+			System.out.println("Returning null for " + trackType);
 			return false;
 		}
 		switch (type) {
@@ -580,7 +587,7 @@ public class RailwayHandler {
 				}
 
 				StationDetail stationDetail = getStationByCode(trainDetail.getFinalDestination(), trainDetail);
-				stationDetail.setStopTime(1800);
+				stationDetail.setStopTime(900);
 			}
 		}
 	}
