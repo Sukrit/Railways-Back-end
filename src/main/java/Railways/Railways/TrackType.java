@@ -18,7 +18,7 @@ public enum TrackType {
 	CONST_NEW("Construction - New Line"),
 	METRE_GAUGE("Metre Gauge"),
 	CONST_ELECTRIC_DOUBLE("Construction - Electric-Line Doubling"),
-	CONST_GAUGE("Construction - Gauge Conversion "),
+	CONST_GAUGE("Construction - Gauge Conversion"),
 	NARROW_GAUGE("Narrow Gauge"),
 	QUAD_ELECTRIC("Quadruple Electric-Line");
 

@@ -72,6 +72,8 @@ public class RailwayHandler {
 	private void populateCoordinateSlopes(TrainResponse trainResponse) {
 		double deltaLat = 0;
 		double deltaLong = 0;
+		double disLat = 0;
+		double disLong = 0;
 		for (TrainDetail trainDetail : trainResponse.getTrainDetail()) {
 			if (trainDetail.getDistanceCovered() == "0") {
 				StationDetail last = getLastCovered(trainDetail.getStationsCovered());
@@ -81,14 +83,16 @@ public class RailwayHandler {
 							&& last.getLongitude() != 0) {
 
 						deltaLat = station.getLat() - last.getLat();
+						disLat = station.getDistance() - last.getDistance();
+						
 						deltaLong = station.getLongitude() - last.getLongitude();
-
+						disLong = station.getDistance() - last.getDistance();
 					} else {
 						deltaLat = 0;
 						deltaLong = 0;
 					}
-					station.setDeltaLat(deltaLat);
-					station.setDeltaLong(deltaLong);
+					station.setDeltaLat(deltaLat/disLat);
+					station.setDeltaLong(deltaLong/disLong);
 					last = station;
 				}
 			}
@@ -130,6 +134,7 @@ public class RailwayHandler {
 				Date dateStart = sdf.parse(startTime);
 
 				range = (dateEnd.getTime() - dateStart.getTime()) / 1000;
+				
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -168,9 +173,9 @@ public class RailwayHandler {
 						if (station.getDeltaLat() != 0 || station.getDeltaLong() != 0) { // Train can move horizontally
 																							// or vertically
 							trainDetail.setCurrentLat(
-									trainDetail.getCurrentLat() + (tempDistance * station.getDeltaLat()) / 111.0);
+									trainDetail.getCurrentLat() + (tempDistance * station.getDeltaLat()));
 							trainDetail.setCurrentLong(trainDetail.getCurrentLong()
-									+ (tempDistance * station.getDeltaLong()) / getLongDifference(station.getLat()));
+									+ (tempDistance * station.getDeltaLong()));
 
 						}
 						range = 0;
