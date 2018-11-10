@@ -63,7 +63,7 @@ public class StationDetail {
 		this.stopTime = stopTime;
 		this.queryBuilder = queryBuilder;
 
-			String sql = "SELECT LAT, `LONG` from STATION WHERE CODE='" + code + "';";
+			String sql = "SELECT lat, `long` from station WHERE Code='" + code + "';";
 			ResultSet rs = this.queryBuilder.selectCustomQuery(sql);
 			try {
 				rs.next();

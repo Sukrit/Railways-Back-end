@@ -15,7 +15,9 @@ public class QueryBuilder {
 	QueryBuilder(){
 		try {
 			Class.forName("com.mysql.jdbc.Driver");
-			con = DriverManager.getConnection("jdbc:mysql://localhost/railways", "root", "");
+			//con = DriverManager.getConnection("jdbc:mysql://localhost/railways", "root", "adidas123");
+			con = DriverManager.getConnection("jdbc:mysql://railways.cojdxmvafngu.us-east-2.rds.amazonaws.com/railways", "root", "adidas123");
+			//con.setSchema("railways");
 			con.setAutoCommit(false);
 		} catch (ClassNotFoundException e) {
 			// TODO Auto-generated catch block
@@ -31,8 +33,8 @@ public class QueryBuilder {
 	public ResultSet selectStopsQuery(String trainNumber ) {
 		try {
 			// fetch all stops
-			String sql = "SELECT * FROM STOP WHERE `TRAIN NUMBER` =" + trainNumber
-					+ " ORDER BY `SERIAL NUMBER` ASC";
+			String sql = "SELECT * FROM stop WHERE `Train Number` =" + trainNumber
+					+ " ORDER BY `Serial Number` ASC";
 			pstm = (PreparedStatement) con.prepareStatement(sql);
 			ResultSet rs = pstm.executeQuery();
 			con.commit();
@@ -50,8 +52,8 @@ public class QueryBuilder {
 	public ResultSet selectRouteQuery(String from, String to ) {
 		try {
 			// fetch all stops
-			String sql = "SELECT DISTANCE FROM ROUTE WHERE `FROM` = '" + from
-					+ "' AND `TO` = '" + to + "' ORDER BY DISTANCE DESC LIMIT 1";
+			String sql = "SELECT Distance FROM route WHERE `From` = '" + from
+					+ "' AND `To` = '" + to + "' ORDER BY Distance DESC LIMIT 1";
 			pstm = (PreparedStatement) con.prepareStatement(sql);
 			ResultSet rs = pstm.executeQuery();
 			con.commit();

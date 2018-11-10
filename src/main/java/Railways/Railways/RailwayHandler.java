@@ -84,15 +84,15 @@ public class RailwayHandler {
 
 						deltaLat = station.getLat() - last.getLat();
 						disLat = station.getDistance() - last.getDistance();
-						
+
 						deltaLong = station.getLongitude() - last.getLongitude();
 						disLong = station.getDistance() - last.getDistance();
 					} else {
 						deltaLat = 0;
 						deltaLong = 0;
 					}
-					station.setDeltaLat(deltaLat/disLat);
-					station.setDeltaLong(deltaLong/disLong);
+					station.setDeltaLat(deltaLat / disLat);
+					station.setDeltaLong(deltaLong / disLong);
 					last = station;
 				}
 			}
@@ -134,7 +134,7 @@ public class RailwayHandler {
 				Date dateStart = sdf.parse(startTime);
 
 				range = (dateEnd.getTime() - dateStart.getTime()) / 1000;
-				
+
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -174,8 +174,8 @@ public class RailwayHandler {
 																							// or vertically
 							trainDetail.setCurrentLat(
 									trainDetail.getCurrentLat() + (tempDistance * station.getDeltaLat()));
-							trainDetail.setCurrentLong(trainDetail.getCurrentLong()
-									+ (tempDistance * station.getDeltaLong()));
+							trainDetail.setCurrentLong(
+									trainDetail.getCurrentLong() + (tempDistance * station.getDeltaLong()));
 
 						}
 						range = 0;
@@ -200,16 +200,16 @@ public class RailwayHandler {
 					StationDetail stationDetail = getStationByCode(trainDetail.getCurrentLocation(), trainDetail);
 					if (stationDetail.getStopTime() == 0) { // Train is passing through a station
 
-						if (isTrackAvailable(stationDetail,
+						if (isTrackAvailable(trainResponse, stationDetail,
 								getNextStation(trainDetail.getStationsPending(), trainDetail.getDistanceCovered()))) {
 							// move this to done
 							moveToVisited(trainDetail, stationDetail.getCode());
 							// carry on moving
 							trainDetail.setCurrentLocation("Moving");
 
-							updateTrackStatus(stationDetail,
+							updateTrackStatus(trainResponse, stationDetail,
 									getNextStation(trainDetail.getStationsPending(), trainDetail.getDistanceCovered()),
-									"Occupied");
+									"O");
 						} else {
 							trainDetail.setDelayed("true");
 							range = 0;
@@ -229,15 +229,15 @@ public class RailwayHandler {
 								range = range - stationDetail.getraminingStopTime();
 								stationDetail.setraminingStopTime(0.0);
 
-								if (isTrackAvailable(stationDetail, getNextStation(trainDetail.getStationsPending(),
-										trainDetail.getDistanceCovered()))) {
+								if (isTrackAvailable(trainResponse, stationDetail, getNextStation(
+										trainDetail.getStationsPending(), trainDetail.getDistanceCovered()))) {
 									// move this to done
 									moveToVisited(trainDetail, stationDetail.getCode());
 									// carry on moving
 									trainDetail.setCurrentLocation("Moving");
 
-									updateTrackStatus(stationDetail, getNextStation(trainDetail.getStationsPending(),
-											trainDetail.getDistanceCovered()), "Occupied");
+									updateTrackStatus(trainResponse, stationDetail, getNextStation(
+											trainDetail.getStationsPending(), trainDetail.getDistanceCovered()), "O");
 
 									updateStationStatus(trainResponse, stationDetail, "Release");
 
@@ -251,7 +251,7 @@ public class RailwayHandler {
 
 							if (isPlatformAvailable(trainResponse, stationDetail)) {
 								updateStationStatus(trainResponse, stationDetail, "Occupy");
-								updateTrackStatus(prevStation, stationDetail, "Available");
+								updateTrackStatus(trainResponse, prevStation, stationDetail, "A");
 
 								if (range < stationDetail.getStopTime()) {
 									stationDetail.setraminingStopTime(stationDetail.getStopTime() - range);
@@ -260,8 +260,8 @@ public class RailwayHandler {
 
 									range = range - stationDetail.getStopTime();
 
-									if (isTrackAvailable(stationDetail, getNextStation(trainDetail.getStationsPending(),
-											trainDetail.getDistanceCovered()))) {
+									if (isTrackAvailable(trainResponse, stationDetail, getNextStation(
+											trainDetail.getStationsPending(), trainDetail.getDistanceCovered()))) {
 										// move this to done
 										moveToVisited(trainDetail, stationDetail.getCode());
 										// carry on moving
@@ -269,10 +269,10 @@ public class RailwayHandler {
 
 										updateStationStatus(trainResponse, stationDetail, "Release");
 
-										updateTrackStatus(stationDetail,
+										updateTrackStatus(trainResponse, stationDetail,
 												getNextStation(trainDetail.getStationsPending(),
 														trainDetail.getDistanceCovered()),
-												"Occupied");
+												"O");
 									} else {
 										setTrainAsLate(trainDetail, range, stationDetail);
 										range = 0;
@@ -285,7 +285,7 @@ public class RailwayHandler {
 							else { // can't find a platform
 								trainDetail.setCurrentLocation("Moving");
 
-								updateTrackStatus(prevStation, stationDetail, "Occupied");
+								updateTrackStatus(trainResponse, prevStation, stationDetail, "O");
 								setTrainAsLate(trainDetail, range, stationDetail);
 								range = 0;
 
@@ -345,16 +345,17 @@ public class RailwayHandler {
 		return stationMax;
 	}
 
-	private void updateTrackStatus(StationDetail currentStation, StationDetail nextStation, String status) {
+	private void updateTrackStatus(TrainResponse trainResponse, StationDetail currentStation, StationDetail nextStation,
+			String status) {
 		if (!TRACK_CHECK) {
 			return;
 		}
-		
-		if(nextStation==null) {
+
+		if (nextStation == null) {
 			return;
 		}
 
-		String sql = "SELECT TYPE FROM NODE WHERE `FROM`='" + currentStation.getCode() + "' AND `TO`='"
+		String sql = "SELECT type FROM node WHERE `from`='" + currentStation.getCode() + "' AND `to`='"
 				+ nextStation.getCode() + "';";
 
 		ResultSet rs = queryBuilder.selectCustomQuery(sql);
@@ -368,19 +369,15 @@ public class RailwayHandler {
 
 				if (isDoubleLine(type)) {
 					// mark one way as occupied
-					sql = "UPDATE NODE SET STATUS ='" + status + "' WHERE `from` = '" + currentStation.getCode()
-							+ "' and `to` = '" + nextStation.getCode() + "';";
-					queryBuilder.updateCustomQuery(sql);
+
+					trainResponse.getTrackMap().put(currentStation.getCode() + ":" + nextStation.getCode(), status);
 
 				} else if (isSingleLine(type)) {
 					// mark both ways as occupied
-					sql = "UPDATE NODE SET STATUS ='" + status + "' WHERE `from` = '" + currentStation.getCode()
-							+ "' and `to` = '" + nextStation.getCode() + "';";
-					queryBuilder.updateCustomQuery(sql);
+					trainResponse.getTrackMap().put(currentStation.getCode() + ":" + nextStation.getCode(), status);
 
-					sql = "UPDATE NODE SET STATUS ='" + status + "' WHERE `from` = '" + nextStation.getCode()
-							+ "' and `to` = '" + currentStation.getCode() + "';";
-					queryBuilder.updateCustomQuery(sql);
+					trainResponse.getTrackMap().put(nextStation.getCode() + ":" + currentStation.getCode(), status);
+
 				} else {
 					return;
 				}
@@ -453,25 +450,21 @@ public class RailwayHandler {
 		}
 	}
 
-	private boolean isTrackAvailable(StationDetail currentStation, StationDetail nextStation) {
+	private boolean isTrackAvailable(TrainResponse trainResponse, StationDetail currentStation,
+			StationDetail nextStation) {
 		if (!TRACK_CHECK) {
 			return true;
 		}
 
-		String sql = "SELECT STATUS FROM NODE WHERE `FROM`='" + currentStation.getCode() + "' AND `TO`='"
-				+ nextStation.getCode() + "';";
-		ResultSet rs = queryBuilder.selectCustomQuery(sql);
-		try {
-			while (rs.next()) {
-				if (rs.getString("STATUS").equals("Occupied")) {
-					return false;
-				}
-			}
-		} catch (SQLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+		String rs = trainResponse.getTrackMap().get(currentStation + ":" + nextStation);
 
+		if (rs != null) {
+			if (rs.equals("O")) {
+				return false;
+			} else {
+				return true;
+			}
+		}
 		return true;
 	}
 
@@ -565,10 +558,10 @@ public class RailwayHandler {
 
 							// fetch train number/serial number of train covering max stations and almost
 							// equal to the distance
-							String newSql = "select max(k.`serial number`-s.`serial number`) as boo"
-									+ " from stop s, stop k where s.station='" + prevStation + "' and k.station= '"
+							String newSql = "select max(k.`Serial Number`-s.`Serial Number`) as boo"
+									+ " from stop s, stop k where s.Station='" + prevStation + "' and k.Station= '"
 									+ rs.getString("Station") + "' "
-									+ "and s.`train number`=k.`train number` order by boo desc limit 1";
+									+ "and s.`Train Number`=k.`Train Number` order by boo desc limit 1";
 							ResultSet rs3 = queryBuilder.selectCustomQuery(newSql);
 							rs3.next();
 							int maxCount = rs3.getInt("boo");
@@ -603,9 +596,9 @@ public class RailwayHandler {
 		try {
 			int count = maxCount;
 			while (count != 1) {
-				String sql = "select s.`train number`,s.`serial number` from stop s, stop k where s.station='"
-						+ prevStation + "' and k.station='" + toStation
-						+ "' and s.`train number`= k.`train number` and (k.`serial number`- s.`serial number`) ="
+				String sql = "select s.`Train Number`,s.`Serial Number` from stop s, stop k where s.Station='"
+						+ prevStation + "' and k.Station='" + toStation
+						+ "' and s.`Train Number`= k.`Train Number` and (k.`Serial Number`- s.`Serial Number`) ="
 						+ count;
 
 				ResultSet rs = queryBuilder.selectCustomQuery(sql);
@@ -641,14 +634,14 @@ public class RailwayHandler {
 			int cumDistance = 0;
 			for (int i = serialNumber; i < (serialNumber + count); i++) {
 
-				String sql = "(select station from stop where `train number`= " + trainNumber
-						+ " and `serial number` = " + (i + 1) + ")";
+				String sql = "(select Station from stop where `Train Number`= " + trainNumber
+						+ " and `Serial Number` = " + (i + 1) + ")";
 				ResultSet rs = queryBuilder.selectCustomQuery(sql);
 				rs.next();
 				String stationCode = rs.getString("Station");
 
-				sql = "select distance from route where `from` = " + "(select station from stop where `train number`= "
-						+ trainNumber + " and `serial number` = " + i + ") and `to`= '" + stationCode + "'";
+				sql = "select Distance from route where `From` = " + "(select Station from stop where `Train Number`= "
+						+ trainNumber + " and `Serial Number` = " + i + ") and `To`= '" + stationCode + "'";
 				rs = queryBuilder.selectCustomQuery(sql);
 				rs.next();
 				int PartDistance = rs.getInt("Distance");
@@ -678,10 +671,10 @@ public class RailwayHandler {
 		try {
 
 			for (int i = serialNumber; i <= (serialNumber + count - 1); i++) {
-				String sql = "select distance from route where `from` = "
-						+ "(select station from stop where `train number`= " + trainNumber + " and `serial number` = "
-						+ i + ") and `to`= " + "(select station from stop where `train number`= " + trainNumber
-						+ " and `serial number` = " + (i + 1) + ")";
+				String sql = "select Distance from route where `From` = "
+						+ "(select Station from stop where `Train Number`= " + trainNumber + " and `Serial Number` = "
+						+ i + ") and `To`= " + "(select Station from stop where `Train Number`= " + trainNumber
+						+ " and `Serial Number` = " + (i + 1) + ")";
 				ResultSet rs = queryBuilder.selectCustomQuery(sql);
 
 				rs.next();
@@ -700,6 +693,9 @@ public class RailwayHandler {
 	private void startTrains(String startTime, String endTime, TrainResponse trainResponse, String startDay) {
 		if (trainResponse.getStationMap() == null) {
 			trainResponse.setStationMap(new HashMap<String, Integer>());
+		}
+		if (trainResponse.getTrackMap() == null) {
+			trainResponse.setTrackMap(new HashMap<String, String>());
 		}
 		List<Train> trainList = fetchTrains(startTime, endTime, startDay, trainResponse);
 		List<TrainDetail> trainDetailList = new ArrayList<TrainDetail>();
@@ -750,10 +746,14 @@ public class RailwayHandler {
 			Class.forName("com.mysql.jdbc.Driver");
 
 			Connection con = null;
-			con = DriverManager.getConnection("jdbc:mysql://localhost/railways", "root", "");
+			// con = DriverManager.getConnection("jdbc:mysql://localhost/railways", "root",
+			// "");
+			con = DriverManager.getConnection("jdbc:mysql://railways.cojdxmvafngu.us-east-2.rds.amazonaws.com/railways",
+					"root", "adidas123");
+
 			con.setAutoCommit(false);
 			PreparedStatement pstm = null;
-			String sql = "SELECT * FROM TRAIN WHERE `DEPART TIME` between '" + startTime + "' AND '" + endTime + "'";
+			String sql = "SELECT * FROM train WHERE `Depart Time` between '" + startTime + "' AND '" + endTime + "'";
 			// System.out.println(sql);
 			pstm = (PreparedStatement) con.prepareStatement(sql);
 			ResultSet rs = pstm.executeQuery();
@@ -775,7 +775,7 @@ public class RailwayHandler {
 			}
 
 			if (STATION_CHECK && trainResponse.getStationMap().isEmpty()) {
-				sql = "SELECT * FROM STATION";
+				sql = "SELECT * FROM station";
 				pstm = (PreparedStatement) con.prepareStatement(sql);
 				rs = pstm.executeQuery();
 				con.commit();
@@ -784,6 +784,17 @@ public class RailwayHandler {
 				}
 			}
 
+			if (TRACK_CHECK && trainResponse.getTrackMap().isEmpty()) {
+				sql = "SELECT * FROM node";
+				pstm = (PreparedStatement) con.prepareStatement(sql);
+				rs = pstm.executeQuery();
+				con.commit();
+				while (rs.next()) {
+					trainResponse.getTrackMap().put(rs.getString("from") + ":" + rs.getString("to"), "A");
+				}
+			}
+
+			System.out.println("Fetch successful");
 			con.close();
 
 		} catch (ClassNotFoundException e) {

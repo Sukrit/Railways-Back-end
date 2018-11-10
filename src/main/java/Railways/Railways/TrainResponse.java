@@ -14,6 +14,7 @@ public class TrainResponse {
 
 	private List<TrainDetail> Trains;
 	private Map<String, Integer> stationMap;
+	private Map<String, String> trackMap;
 
 
 	public List<TrainDetail> getTrainDetail() {
@@ -30,5 +31,13 @@ public class TrainResponse {
 
 	public void setStationMap(Map<String, Integer> stationMap) {
 		this.stationMap = stationMap;
+	}
+
+	public Map<String, String> getTrackMap() {
+		return trackMap;
+	}
+
+	public void setTrackMap(Map<String, String> trackMap) {
+		this.trackMap = trackMap;
 	} 
 }
